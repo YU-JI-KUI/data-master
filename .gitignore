@@ -1,0 +1,29 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# 数据文件（不提交原始数据和输出产物，保护数据安全）
+data/raw/*.xlsx
+data/raw/*.xls
+data/processed/*.jsonl
+data/output/*.jsonl
+data/output/*.txt
+
+# 保留目录结构占位文件
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/output/.gitkeep
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
