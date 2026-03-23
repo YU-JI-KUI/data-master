@@ -34,3 +34,13 @@ paths:
   raw: data/raw
   processed: data/processed
   output: data/output
+
+# ── 输出格式 ──────────────────────────────────────────────
+# preset 指定内置格式名称，切换平台时只需改这一行：
+#
+#   openai    : messages + user/assistant 角色（OpenAI / LLaMA-Factory 标准）
+#   internal  : conversations + human/assistant 角色 + 自增 id（内部平台）
+#
+# 也可通过命令行参数临时覆盖：--format openai
+output_format:
+  preset: internal

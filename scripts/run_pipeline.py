@@ -23,6 +23,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 from src.analyzer import DataAnalyzer
 from src.config import get_settings
 from src.converter import JsonlConverter
+from src.converter.format_schema import get_schema, list_formats
 from src.loader import ExcelLoader
 from src.splitter import DataSplitter
 from src.validator import DataValidator
@@ -70,6 +71,13 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="测试集比例（默认 0.1）",
     )
+    parser.add_argument(
+        "--format",
+        type=str,
+        default=None,
+        metavar="FORMAT",
+        help=f"输出格式，临时覆盖 config.yaml 设置（可选值：{list_formats()}）",
+    )
     return parser.parse_args()
 
 
@@ -85,9 +93,13 @@ def main() -> None:
     if args.test_ratio is not None:
         cfg.test_ratio = args.test_ratio
 
+    # ── 格式覆盖（--format 参数 > config.yaml）──
+    schema = get_schema(args.format) if args.format else cfg.output_format
+
     print("\n🚀 data-master 流水线启动")
     print(f"   输入文件：{args.input.resolve()}")
-    print(f"   运行时间：{cfg.run_timestamp}\n")
+    print(f"   运行时间：{cfg.run_timestamp}")
+    print(f"   输出格式：{schema.name}\n")
 
     # ──────────────────────────────────────────
     # Step 1：加载 Excel
@@ -120,7 +132,7 @@ def main() -> None:
     split_result = splitter.split(df_clean)
     print(split_result.summary())
 
-    converter = JsonlConverter(cfg)
+    converter = JsonlConverter(cfg, schema)
     # 同时写入全量文件和三个子集文件
     converter.convert(df_clean)
     converter.convert_split(split_result.train, cfg.train_jsonl_path)

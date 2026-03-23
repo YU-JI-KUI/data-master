@@ -24,6 +24,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 from src.config import get_settings
 from src.converter import JsonlConverter
+from src.converter.format_schema import get_schema, list_formats
 from src.loader import ExcelLoader
 from src.splitter import DataSplitter
 from src.validator import DataValidator
@@ -70,6 +71,13 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="随机种子（默认 42）",
     )
+    parser.add_argument(
+        "--format",
+        type=str,
+        default=None,
+        metavar="FORMAT",
+        help=f"输出格式，临时覆盖 config.yaml 设置（可选值：{list_formats()}）",
+    )
     return parser.parse_args()
 
 
@@ -87,8 +95,11 @@ def main() -> None:
     if args.seed is not None:
         cfg.random_seed = args.seed
 
+    schema = get_schema(args.format) if args.format else cfg.output_format
+
     print("\n✂️  run_split：数据集划分")
     print(f"   运行时间：{cfg.run_timestamp}")
+    print(f"   输出格式：{schema.name}")
     print(
         f"   比例 train={cfg.train_ratio} / val={cfg.val_ratio} / test={cfg.test_ratio}"
     )
@@ -112,7 +123,7 @@ def main() -> None:
     print(split_result.summary())
 
     # Step 3：写出三份 JSONL
-    converter = JsonlConverter(cfg)
+    converter = JsonlConverter(cfg, schema)
     converter.convert_split(split_result.train, cfg.train_jsonl_path)
     converter.convert_split(split_result.val,   cfg.val_jsonl_path)
     converter.convert_split(split_result.test,  cfg.test_jsonl_path)

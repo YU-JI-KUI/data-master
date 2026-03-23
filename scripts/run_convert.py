@@ -22,6 +22,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 from src.config import get_settings
 from src.converter import JsonlConverter
+from src.converter.format_schema import get_schema, list_formats
 from src.loader import ExcelLoader
 from src.validator import DataValidator
 
@@ -54,6 +55,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="跳过校验步骤（不推荐，仅用于已清洗数据）",
     )
+    parser.add_argument(
+        "--format",
+        type=str,
+        default=None,
+        metavar="FORMAT",
+        help=f"输出格式，临时覆盖 config.yaml 设置（可选值：{list_formats()}）",
+    )
     return parser.parse_args()
 
 
@@ -61,9 +69,12 @@ def main() -> None:
     args = parse_args()
     cfg = get_settings()
 
+    schema = get_schema(args.format) if args.format else cfg.output_format
+
     print("\n🔄 run_convert：数据转换")
     print(f"   运行时间：{cfg.run_timestamp}")
-    print(f"   输入：{args.input.resolve()}\n")
+    print(f"   输入：{args.input.resolve()}")
+    print(f"   输出格式：{schema.name}\n")
 
     # Step 1：加载
     loader = ExcelLoader(cfg)
@@ -83,7 +94,7 @@ def main() -> None:
         print("   ⚠️  已跳过校验步骤")
 
     # Step 3：转换
-    converter = JsonlConverter(cfg)
+    converter = JsonlConverter(cfg, schema)
     output_path = converter.convert(df, args.output)
     print(f"\n✅ 转换完成：{len(df)} 条 → {output_path}")
 

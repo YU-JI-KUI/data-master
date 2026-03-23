@@ -20,6 +20,7 @@ from typing import Any
 
 import yaml
 
+# NOTE: FormatSchema 在 __post_init__ 里懒加载，避免循环依赖
 # ── 项目根目录（本文件位于 src/config/）
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -72,6 +73,9 @@ class Settings:
     # 运行时时间戳（每个 Settings 实例固定，整次运行保持一致）
     run_timestamp: str = field(init=False)
 
+    # 输出格式（FormatSchema，懒加载避免循环依赖）
+    output_format: Any = field(init=False)
+
     def __post_init__(self) -> None:
         cfg = _load_yaml(self.config_path)
 
@@ -122,6 +126,24 @@ class Settings:
         if abs(total - 1.0) > 1e-6:
             raise ValueError(
                 f"config.yaml split 比例之和必须为 1.0，当前为 {total:.4f}"
+            )
+
+        # ── 输出格式：从 config.yaml 加载 preset 名称，再解析为 FormatSchema ──
+        # 延迟导入避免循环依赖（settings ← converter ← settings）
+        from src.converter.format_schema import get_schema, list_formats  # noqa: PLC0415
+        fmt_cfg = cfg.get("output_format", {})
+        if isinstance(fmt_cfg, str):
+            # 兼容写法：output_format: internal
+            preset_name = fmt_cfg
+        else:
+            preset_name = fmt_cfg.get("preset", "openai")
+        try:
+            self.output_format = get_schema(preset_name)
+        except ValueError:
+            available = list_formats()
+            raise ValueError(
+                f"config.yaml output_format.preset 未知：'{preset_name}'，"
+                f"可用格式：{available}"
             )
 
         # ── 确保基础目录存在 ──
