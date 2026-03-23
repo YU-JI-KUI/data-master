@@ -2,7 +2,7 @@
 
 > 大模型训练数据处理与管理工具，专为 **Qwen3-8B 意图分类微调**设计。
 >
-> 标签：`寿险相关` / `拒识`
+> 标签：`寿险意图` / `拒识`
 
 ---
 
@@ -49,11 +49,11 @@ uv sync
 
 | input          | output |
 |----------------|--------|
-| 我想买一份寿险  | 寿险相关 |
+| 我想买一份寿险  | 寿险意图 |
 | 今天天气怎么样  | 拒识     |
-| 请帮我理赔      | 寿险相关 |
+| 请帮我理赔      | 寿险意图 |
 
-> 列名必须是 `input` 和 `output`，标签只能是 `寿险相关` 或 `拒识`。
+> 列名必须是 `input` 和 `output`，标签只能是 `寿险意图` 或 `拒识`。
 
 ### 3. 运行
 
@@ -90,9 +90,9 @@ uv run python scripts/run_split.py --input data/raw/sample.xlsx --train 0.7 --va
 ```json
 {
   "messages": [
-    {"role": "system",    "content": "你是一个意图分类模型，只能输出：寿险相关 或 拒识"},
+    {"role": "system",    "content": "你是一个意图分类模型，只能输出：寿险意图 或 拒识"},
     {"role": "user",      "content": "我想了解一下万能险"},
-    {"role": "assistant", "content": "寿险相关"}
+    {"role": "assistant", "content": "寿险意图"}
   ]
 }
 ```
@@ -105,7 +105,7 @@ uv run python scripts/run_split.py --input data/raw/sample.xlsx --train 0.7 --va
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
-| `valid_labels` | `["寿险相关", "拒识"]` | 合法标签列表 |
+| `valid_labels` | `["寿险意图", "拒识"]` | 合法标签列表 |
 | `system_prompt` | `"你是一个意图分类模型..."` | 系统提示词 |
 | `train_ratio` | `0.8` | 训练集比例 |
 | `val_ratio` | `0.1` | 验证集比例 |

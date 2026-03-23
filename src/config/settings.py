@@ -39,10 +39,10 @@ class Settings:
     output_col: str = "output"
 
     # ── 合法标签（意图分类） ──
-    valid_labels: list[str] = field(default_factory=lambda: ["寿险相关", "拒识"])
+    valid_labels: list[str] = field(default_factory=lambda: ["寿险意图", "拒识"])
 
     # ── 系统提示词 ──
-    system_prompt: str = "你是一个意图分类模型，只能输出：寿险相关 或 拒识"
+    system_prompt: str = "你是一个意图分类模型，只能输出：寿险意图 或 拒识"
 
     # ── 数据集划分比例 ──
     train_ratio: float = 0.8
