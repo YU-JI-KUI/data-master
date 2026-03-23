@@ -2,7 +2,76 @@
 
 > 大模型训练数据处理与管理工具，专为 **Qwen3-8B 意图分类微调**设计。
 >
-> 标签：`寿险意图` / `拒识`
+> 将原始标注数据（Excel）自动处理成微调所需的 JSONL 格式，并完成清洗、划分、分析全流程。
+>
+> 支持标签：`寿险意图` / `拒识`
+
+---
+
+## 目录
+
+- [环境要求](#环境要求)
+- [安装步骤](#安装步骤)
+- [项目结构](#项目结构)
+- [第一步：准备数据](#第一步准备数据)
+- [第二步：修改配置](#第二步修改配置config-yaml-说明)
+- [第三步：运行](#第三步运行)
+- [输出文件说明](#输出文件说明)
+- [输出格式详解](#输出格式详解)
+- [切换平台格式](#切换平台格式)
+- [常见问题](#常见问题)
+- [进阶：在代码中调用各模块](#进阶在代码中调用各模块)
+
+---
+
+## 环境要求
+
+| 项目 | 要求 |
+|------|------|
+| Python | 3.12 或以上 |
+| 包管理器 | [uv](https://github.com/astral-sh/uv)（推荐）或 pip |
+| 操作系统 | macOS / Linux / Windows（WSL） |
+
+> **什么是 uv？** uv 是一个极快的 Python 包管理器，用来替代 pip + venv。本项目用它管理依赖和虚拟环境。
+
+---
+
+## 安装步骤
+
+### 1. 安装 uv
+
+```bash
+# macOS / Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 安装后重启终端，或执行：
+source ~/.bashrc   # Linux
+source ~/.zshrc    # macOS (zsh)
+```
+
+安装成功后执行 `uv --version`，能看到版本号即为成功。
+
+### 2. 克隆项目
+
+```bash
+git clone https://github.com/你的用户名/data-master.git
+cd data-master
+```
+
+### 3. 安装依赖
+
+```bash
+uv sync
+```
+
+执行后 uv 会自动创建虚拟环境（`.venv/` 目录）并安装所有依赖：
+
+- `pandas` — 数据处理
+- `openpyxl` — 读取 Excel 文件
+- `scikit-learn` — 分层抽样划分
+- `pyyaml` — 读取 YAML 配置文件
+
+> **注意：** 不需要手动激活虚拟环境，运行脚本时统一用 `uv run python ...`，uv 会自动使用项目的虚拟环境。
 
 ---
 
@@ -10,82 +79,259 @@
 
 ```
 data-master/
-├── pyproject.toml          # uv 项目配置 & 依赖
+│
+├── config.yaml                  ← ⭐ 唯一需要你修改的配置文件
+├── pyproject.toml               ← 项目元信息和依赖声明
+│
 ├── data/
-│   ├── raw/                # 原始 Excel 数据放这里
-│   ├── processed/          # 全量 data.jsonl（转换后）
-│   └── output/             # train/val/test.jsonl + 分析报告
-├── src/
-│   ├── config/             # 全局配置（路径、标签、比例等）
-│   ├── loader/             # Excel 读取
-│   ├── validator/          # 空值/标签/去重校验
-│   ├── converter/          # DataFrame → JSONL
-│   ├── splitter/           # 分层抽样划分
-│   └── analyzer/           # 统计分析 & 报告
-└── scripts/
-    ├── run_pipeline.py     # 一键完整流水线
-    ├── run_convert.py      # 仅转换
-    └── run_split.py        # 仅划分
+│   ├── raw/                     ← 📥 把你的原始 Excel 文件放在这里
+│   ├── processed/               ← 全量转换结果（data.jsonl）
+│   └── output/                  ← 划分后的训练数据，按时间戳分子目录
+│       └── 2026-03-23 183228/
+│           ├── train.jsonl
+│           ├── val.jsonl
+│           ├── test.jsonl
+│           └── analysis_report.txt
+│
+├── src/                         ← 核心代码（通常不需要改动）
+│   ├── config/                  ← 配置加载，读取 config.yaml
+│   ├── loader/                  ← 从 Excel 读取数据
+│   ├── validator/               ← 数据校验：空值、非法标签、去重
+│   ├── converter/               ← 转换为 JSONL 格式，支持多平台格式切换
+│   ├── splitter/                ← 分层抽样划分 train/val/test
+│   └── analyzer/                ← 统计分析，生成报告
+│
+└── scripts/                     ← ⭐ 日常使用的入口脚本
+    ├── run_pipeline.py          ← 一键完整流水线（推荐）
+    ├── run_convert.py           ← 仅做格式转换
+    └── run_split.py             ← 仅做数据集划分
 ```
 
 ---
 
-## 快速开始
+## 第一步：准备数据
 
-### 1. 安装依赖（使用 uv）
+将原始标注数据保存为 `.xlsx` 格式，放入 `data/raw/` 目录。
 
-```bash
-# 安装 uv（如果没有）
-curl -LsSf https://astral.sh/uv/install.sh | sh
+**Excel 格式要求：**
 
-# 在项目目录下同步依赖
-cd data-master
-uv sync
+| input | output |
+|-------|--------|
+| 我想了解一下万能险 | 寿险意图 |
+| 请帮我办理理赔手续 | 寿险意图 |
+| 今天天气怎么样 | 拒识 |
+| 帮我写一首诗 | 拒识 |
+
+**规则：**
+
+- 第一行必须是标题行，列名必须完全一致：`input` 和 `output`
+- `input` 列：用户的原始问句，不能为空
+- `output` 列：只能填 `寿险意图` 或 `拒识`，其他值会在校验时被过滤掉
+- 建议数据量：至少 30 条（每个标签至少 10 条），以保证分层划分能正常执行
+
+---
+
+## 第二步：修改配置（config.yaml 说明）
+
+项目根目录下的 `config.yaml` 是**唯一需要你按需修改的文件**，代码本身不需要改动。
+
+```yaml
+# ── 合法标签列表 ──────────────────────────────────────────
+# 校验时会检查 output 列的值是否在此列表内，不在的行会被过滤
+valid_labels:
+  - 寿险意图
+  - 拒识
+
+# ── 系统提示词 ───────────────────────────────────────────
+# 写入每条 JSONL 的 system message，决定模型的角色定位
+# 修改这里不需要改任何代码
+system_prompt: "你是一个意图分类模型，只能输出：寿险意图 或 拒识"
+
+# ── Excel 列名映射 ────────────────────────────────────────
+# 如果你的 Excel 列名不是 input/output，在这里修改即可
+columns:
+  input: input
+  output: output
+
+# ── 数据集划分比例 ────────────────────────────────────────
+# 三个值相加必须等于 1.0
+# random_seed 固定后，每次运行划分结果完全一致（保证可复现）
+split:
+  train: 0.8    # 80% 用于训练
+  val: 0.1      # 10% 用于验证
+  test: 0.1     # 10% 用于测试
+  random_seed: 42
+
+# ── 数据目录（通常不需要修改）─────────────────────────────
+paths:
+  raw: data/raw
+  processed: data/processed
+  output: data/output
+
+# ── 输出格式 ──────────────────────────────────────────────
+# 切换不同平台的训练数据格式，目前支持：
+#   internal : 内部平台格式（conversations + human 角色 + id 字段）← 当前默认
+#   openai   : OpenAI/LLaMA-Factory 标准格式（messages + user 角色）
+output_format:
+  preset: internal
 ```
 
-### 2. 准备数据
+---
 
-将 Excel 文件放入 `data/raw/`，格式要求：
+## 第三步：运行
 
-| input          | output |
-|----------------|--------|
-| 我想买一份寿险  | 寿险意图 |
-| 今天天气怎么样  | 拒识     |
-| 请帮我理赔      | 寿险意图 |
+所有命令都在项目根目录下执行。
 
-> 列名必须是 `input` 和 `output`，标签只能是 `寿险意图` 或 `拒识`。
-
-### 3. 运行
-
-#### 一键完整流水线（推荐）
+### 方式一：一键完整流水线（推荐新手使用）
 
 ```bash
-uv run python scripts/run_pipeline.py --input data/raw/sample.xlsx
+uv run python scripts/run_pipeline.py --input data/raw/你的文件名.xlsx
 ```
 
-执行步骤：加载 → 校验/清洗 → 转换 JSONL → 分层划分 → 分析报告
+这一条命令会依次执行：
 
-#### 仅转换（Excel → JSONL）
+1. **加载** Excel 文件
+2. **校验 & 清洗** — 自动过滤空值、非法标签、重复 input
+3. **划分** — 按 8:1:1 分层抽样，保证每个子集中标签比例一致
+4. **转换** — 生成全量 `data.jsonl` 和 train/val/test 三份 JSONL
+5. **分析** — 输出标签分布、文本长度统计报告
+
+**示例输出：**
+
+```
+🚀 data-master 流水线启动
+   输入文件：/path/to/data/raw/sample.xlsx
+   运行时间：2026-03-23 183228
+   输出格式：internal
+
+📂 [1/4] 加载 Excel 数据...
+   原始数据：300 条
+
+✅ [2/4] 数据校验与清洗...
+── 校验摘要 ──────────────────────────
+  整体状态     : ✅ 通过
+  清洗后行数   : 295
+  空值行数     : 2（已移除）
+  非法标签行数 : 1（已移除）
+  重复行数     : 2（已去重，保留第一条）
+──────────────────────────────────────
+
+🔄 [3/4] 划分数据集 & 转换 JSONL...
+── 数据划分摘要 ──────────────────────────
+  train :   236 条  {'寿险意图': 160, '拒识': 76}
+  val   :    30 条  {'寿险意图': 20, '拒识': 10}
+  test  :    29 条  {'寿险意图': 19, '拒识': 10}
+──────────────────────────────────────────
+
+   输出目录：data/output/2026-03-23 183228
+   ├── train.jsonl  (236 条)
+   ├── val.jsonl    (30 条)
+   └── test.jsonl   (29 条)
+
+📊 [4/4] 生成分析报告...
+✨ 流水线执行完成！
+```
+
+**全部可用参数：**
+
+```bash
+uv run python scripts/run_pipeline.py \
+  --input data/raw/sample.xlsx \   # 必填：输入文件路径
+  --format openai \                # 可选：临时切换输出格式（覆盖 config.yaml）
+  --train-ratio 0.7 \              # 可选：训练集比例（覆盖 config.yaml）
+  --val-ratio 0.15 \               # 可选：验证集比例
+  --test-ratio 0.15 \              # 可选：测试集比例
+  --no-report                      # 可选：跳过分析报告生成
+```
+
+---
+
+### 方式二：仅转换（Excel → JSONL，不划分）
+
+适用场景：只想生成全量 JSONL，不需要划分。
 
 ```bash
 uv run python scripts/run_convert.py --input data/raw/sample.xlsx
-# 自定义输出路径
-uv run python scripts/run_convert.py --input data/raw/sample.xlsx --output data/processed/my_data.jsonl
-```
 
-#### 仅划分（重新切分比例）
+# 指定输出路径
+uv run python scripts/run_convert.py \
+  --input data/raw/sample.xlsx \
+  --output data/processed/my_data.jsonl
 
-```bash
-uv run python scripts/run_split.py --input data/raw/sample.xlsx
-# 自定义比例（三者之和须为 1.0）
-uv run python scripts/run_split.py --input data/raw/sample.xlsx --train 0.7 --val 0.15 --test 0.15
+# 跳过校验（仅在数据已确认干净时使用）
+uv run python scripts/run_convert.py \
+  --input data/raw/sample.xlsx \
+  --skip-validation
 ```
 
 ---
 
-## 输出格式（JSONL）
+### 方式三：仅划分（重新切分已有数据）
 
-每行一条训练样本，符合 Qwen3/LLaMA-Factory 微调格式：
+适用场景：已有清洗好的数据，想用不同比例重新划分。
+
+```bash
+uv run python scripts/run_split.py --input data/raw/sample.xlsx
+
+# 自定义比例（三者之和必须为 1.0）
+uv run python scripts/run_split.py \
+  --input data/raw/sample.xlsx \
+  --train 0.7 --val 0.15 --test 0.15
+
+# 更换随机种子（会得到不同的划分结果）
+uv run python scripts/run_split.py \
+  --input data/raw/sample.xlsx \
+  --seed 123
+```
+
+---
+
+## 输出文件说明
+
+每次运行会在 `data/output/` 下自动创建一个**带时间戳的子目录**，格式为 `yyyy-MM-dd HHmmss`。
+
+```
+data/
+├── processed/
+│   └── data.jsonl              ← 全量数据（未划分），每次运行覆盖
+└── output/
+    ├── 2026-03-23 183228/      ← 第一次运行的结果
+    │   ├── train.jsonl
+    │   ├── val.jsonl
+    │   ├── test.jsonl
+    │   └── analysis_report.txt
+    └── 2026-03-24 091500/      ← 第二次运行的结果，不会覆盖第一次
+        ├── train.jsonl
+        └── ...
+```
+
+> 时间戳设计保证了多次运行的结果互不覆盖，方便对比不同参数下的处理结果。
+
+---
+
+## 输出格式详解
+
+本项目支持两种 JSONL 格式，由 `config.yaml` 的 `output_format.preset` 控制。
+
+### internal 格式（内部平台，当前默认）
+
+```json
+{
+  "id": 1,
+  "conversations": [
+    {"role": "system",    "content": "你是一个意图分类模型，只能输出：寿险意图 或 拒识"},
+    {"role": "human",     "content": "我想了解一下万能险"},
+    {"role": "assistant", "content": "寿险意图"}
+  ]
+}
+```
+
+特点：
+- 有自增 `id` 字段（从 1 开始）
+- 对话数组字段名为 `conversations`
+- 用户角色名为 `human`
+
+### openai 格式（OpenAI / LLaMA-Factory 标准）
 
 ```json
 {
@@ -97,56 +343,126 @@ uv run python scripts/run_split.py --input data/raw/sample.xlsx --train 0.7 --va
 }
 ```
 
+特点：
+- 无 `id` 字段
+- 对话数组字段名为 `messages`
+- 用户角色名为 `user`
+
 ---
 
-## 配置说明
+## 切换平台格式
 
-所有配置集中在 `src/config/settings.py`，无需修改业务代码：
+### 永久切换（修改 config.yaml）
 
-| 配置项 | 默认值 | 说明 |
-|--------|--------|------|
-| `valid_labels` | `["寿险意图", "拒识"]` | 合法标签列表 |
-| `system_prompt` | `"你是一个意图分类模型..."` | 系统提示词 |
-| `train_ratio` | `0.8` | 训练集比例 |
-| `val_ratio` | `0.1` | 验证集比例 |
-| `test_ratio` | `0.1` | 测试集比例 |
-| `random_seed` | `42` | 随机种子 |
+打开 `config.yaml`，将 `preset` 改为目标格式名：
 
-也支持通过**环境变量**覆盖路径：
-
-```bash
-DATA_RAW_DIR=/your/path uv run python scripts/run_pipeline.py --input ...
+```yaml
+output_format:
+  preset: openai   # 从 internal 改为 openai
 ```
 
+之后所有运行都使用新格式。
+
+### 临时切换（命令行参数）
+
+不修改配置文件，只对本次运行生效：
+
+```bash
+uv run python scripts/run_pipeline.py --input data/raw/sample.xlsx --format openai
+```
+
+### 添加新平台格式
+
+如果将来需要对接新的训练平台，只需在 `src/converter/format_schema.py` 文件末尾追加几行，无需改动任何其他代码：
+
+```python
+from src.converter.format_schema import FormatSchema, register
+
+register(FormatSchema(
+    name="新平台名称",            # 用于 --format 参数和 config.yaml
+    conversations_key="messages", # 对话数组的字段名
+    role_map={
+        "system":    "system",
+        "user":      "human",     # 按新平台要求填写角色名
+        "assistant": "assistant",
+    },
+    include_id=True,              # 是否需要 id 字段
+))
+```
+
+注册后即可通过 `--format 新平台名称` 或 config.yaml 使用。
+
 ---
 
-## 模块设计原则
+## 常见问题
 
-- **配置集中**：所有路径和参数通过 `Settings` 管理，不硬编码
-- **校验与业务分离**：`ValidationResult` 返回结果对象，调用方决定是否中止
-- **可复现**：所有随机操作均受 `random_seed` 控制
-- **分层抽样**：`DataSplitter` 保证 train/val/test 中各标签比例一致
-- **回退机制**：数据量不足时自动降级为随机划分，并打印警告
+**Q：运行后提示"找不到 Excel 文件"？**
+
+检查路径是否正确。建议使用相对于项目根目录的路径，例如：
+
+```bash
+# ✅ 正确（相对路径，在项目根目录下运行）
+uv run python scripts/run_pipeline.py --input data/raw/sample.xlsx
+
+# ✅ 也正确（绝对路径）
+uv run python scripts/run_pipeline.py --input /Users/kris/data/sample.xlsx
+```
+
+**Q：校验后数据大量减少，非法标签行数很多？**
+
+说明 Excel 中的 output 列有不符合规范的值。检查标签是否有多余空格、全角/半角问题，或者拼写错误（如「寿险相关」应该是「寿险意图」）。
+
+**Q：提示"分层抽样失败，回退到随机划分"？**
+
+说明某个标签的数据量太少，无法在每个子集中都分到样本。建议每个标签至少准备 30 条以上的数据。
+
+**Q：想修改系统提示词（system prompt）？**
+
+直接修改 `config.yaml` 中的 `system_prompt` 字段即可，不需要改代码：
+
+```yaml
+system_prompt: "你是一个新的提示词"
+```
+
+**Q：多次运行后 data/output/ 目录下有很多时间戳子目录，想清理怎么办？**
+
+手动删除不需要的时间戳目录即可，`data/output/` 下的子目录之间互不影响。
 
 ---
 
-## 扩展示例
+## 进阶：在代码中调用各模块
 
-### 在代码中调用各模块
+如果需要在自己的脚本中使用各模块，可以这样调用：
 
 ```python
 from src.config import get_settings
 from src.loader import load_excel
 from src.validator import validate
-from src.converter import convert_to_jsonl
+from src.converter import convert_to_jsonl, get_schema
 from src.splitter import split_data
 from src.analyzer import analyze
 
+# 加载全局配置（会读取 config.yaml）
 cfg = get_settings()
+
+# 加载数据
 df = load_excel("data/raw/sample.xlsx")
+
+# 校验 & 清洗
 result = validate(df)
+if not result.is_valid:
+    print(result.summary())
+    exit(1)
+
+# 划分
 split = split_data(result.cleaned_df)
-convert_to_jsonl(split.train, cfg.train_jsonl_path)
+print(split.summary())
+
+# 转换为 JSONL（使用 internal 格式）
+schema = get_schema("internal")
+convert_to_jsonl(split.train, cfg.train_jsonl_path, schema=schema)
+
+# 生成分析报告
 report = analyze(result.cleaned_df)
 print(report.to_text())
 ```
