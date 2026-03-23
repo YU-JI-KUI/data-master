@@ -223,10 +223,10 @@ uv run python scripts/run_pipeline.py --input data/raw/你的文件名.xlsx
   test  :    29 条  {'寿险意图': 19, '拒识': 10}
 ──────────────────────────────────────────
 
-   输出目录：data/output/2026-03-23 183228
-   ├── train.jsonl  (236 条)
-   ├── val.jsonl    (30 条)
-   └── test.jsonl   (29 条)
+   输出目录：data/output
+   ├── train_20260323183228.jsonl  (236 条)
+   ├── val_20260323183228.jsonl    (30 条)
+   └── test_20260323183228.jsonl   (29 条)
 
 📊 [4/4] 生成分析报告...
 ✨ 流水线执行完成！
@@ -288,24 +288,23 @@ uv run python scripts/run_split.py \
 
 ## 输出文件说明
 
-每次运行会在 `data/output/` 下自动创建一个**带时间戳的子目录**，格式为 `yyyy-MM-dd HHmmss`。
+每次运行生成的文件名都会自动追加时间戳后缀，格式为 `yyyymmddHHmmss`（14 位数字）。
 
 ```
 data/
 ├── processed/
-│   └── data.jsonl              ← 全量数据（未划分），每次运行覆盖
+│   ├── data_20260323191342.jsonl   ← 第一次运行的全量数据
+│   └── data_20260324091500.jsonl   ← 第二次运行的全量数据
 └── output/
-    ├── 2026-03-23 183228/      ← 第一次运行的结果
-    │   ├── train.jsonl
-    │   ├── val.jsonl
-    │   ├── test.jsonl
-    │   └── analysis_report.txt
-    └── 2026-03-24 091500/      ← 第二次运行的结果，不会覆盖第一次
-        ├── train.jsonl
-        └── ...
+    ├── train_20260323191342.jsonl
+    ├── val_20260323191342.jsonl
+    ├── test_20260323191342.jsonl
+    ├── analysis_report_20260323191342.txt
+    ├── train_20260324091500.jsonl  ← 第二次运行，文件名不同，不会覆盖
+    └── ...
 ```
 
-> 时间戳设计保证了多次运行的结果互不覆盖，方便对比不同参数下的处理结果。
+> 时间戳文件名保证了多次运行的结果互不覆盖，直接通过文件名就能区分每次运行的时间。
 
 ---
 

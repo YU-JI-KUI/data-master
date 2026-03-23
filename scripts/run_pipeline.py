@@ -139,10 +139,10 @@ def main() -> None:
     converter.convert_split(split_result.val,   cfg.val_jsonl_path)
     converter.convert_split(split_result.test,  cfg.test_jsonl_path)
 
-    print(f"\n   输出目录：{cfg.run_output_dir}")
-    print(f"   ├── train.jsonl  ({len(split_result.train)} 条)")
-    print(f"   ├── val.jsonl    ({len(split_result.val)} 条)")
-    print(f"   └── test.jsonl   ({len(split_result.test)} 条)\n")
+    print(f"\n   输出目录：{cfg.data_output_dir}")
+    print(f"   ├── train_{cfg.run_timestamp}.jsonl  ({len(split_result.train)} 条)")
+    print(f"   ├── val_{cfg.run_timestamp}.jsonl    ({len(split_result.val)} 条)")
+    print(f"   └── test_{cfg.run_timestamp}.jsonl   ({len(split_result.test)} 条)\n")
 
     # ──────────────────────────────────────────
     # Step 4：数据分析报告

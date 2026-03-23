@@ -81,8 +81,8 @@ class Settings:
 
         self.project_root = _PROJECT_ROOT
 
-        # ── 时间戳：格式 yyyy-MM-dd HHmmss ──
-        self.run_timestamp = datetime.now().strftime("%Y-%m-%d %H%M%S")
+        # ── 时间戳：格式 yyyymmddHHmmss（直接拼入文件名，无空格/分隔符）
+        self.run_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 
         # ── 路径：YAML → 环境变量覆盖 ──
         paths = cfg.get("paths", {})
@@ -150,35 +150,27 @@ class Settings:
         for d in (self.data_raw_dir, self.data_processed_dir, self.data_output_dir):
             d.mkdir(parents=True, exist_ok=True)
 
-    # ── 带时间戳的运行输出目录 ──────────────────────────────
-    @property
-    def run_output_dir(self) -> Path:
-        """当前运行的输出子目录，如 data/output/2026-03-23 173526/"""
-        d = self.data_output_dir / self.run_timestamp
-        d.mkdir(parents=True, exist_ok=True)
-        return d
-
-    # ── 全量 JSONL（写入 processed/，不含时间戳，代表最新版本） ──
+    # ── 全量 JSONL：data/processed/data_yyyymmddHHmmss.jsonl ──
     @property
     def processed_jsonl_path(self) -> Path:
-        return self.data_processed_dir / "data.jsonl"
+        return self.data_processed_dir / f"data_{self.run_timestamp}.jsonl"
 
-    # ── 划分后的三份文件（带时间戳子目录） ──────────────────
+    # ── 划分后三份文件：直接落在 output/ 下，文件名带时间戳 ──
     @property
     def train_jsonl_path(self) -> Path:
-        return self.run_output_dir / "train.jsonl"
+        return self.data_output_dir / f"train_{self.run_timestamp}.jsonl"
 
     @property
     def val_jsonl_path(self) -> Path:
-        return self.run_output_dir / "val.jsonl"
+        return self.data_output_dir / f"val_{self.run_timestamp}.jsonl"
 
     @property
     def test_jsonl_path(self) -> Path:
-        return self.run_output_dir / "test.jsonl"
+        return self.data_output_dir / f"test_{self.run_timestamp}.jsonl"
 
     @property
     def report_path(self) -> Path:
-        return self.run_output_dir / "analysis_report.txt"
+        return self.data_output_dir / f"analysis_report_{self.run_timestamp}.txt"
 
 
 # ── 单例 ────────────────────────────────────────────────────
