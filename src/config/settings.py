@@ -1,108 +1,183 @@
 """
 配置管理模块
 
-所有路径、标签、模型相关配置集中在此，避免硬编码。
-通过 get_settings() 获取单例配置对象。
+优先级（由高到低）：
+  1. 环境变量（DATA_RAW_DIR / DATA_PROCESSED_DIR / DATA_OUTPUT_DIR）
+  2. 项目根目录下的 config.yaml
+  3. 代码内置默认值
+
+每次运行时，输出目录会自动追加时间戳子目录（格式：yyyy-MM-dd HHmmss），
+保证多次运行互不覆盖，方便对比不同版本的处理结果。
 """
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
+import yaml
 
-# ──────────────────────────────────────────────
-# 项目根目录：自动推断（本文件位于 src/config/）
-# ──────────────────────────────────────────────
+# ── 项目根目录（本文件位于 src/config/）
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# ── 默认 config.yaml 路径
+_DEFAULT_CONFIG_PATH = _PROJECT_ROOT / "config.yaml"
+
+
+def _load_yaml(path: Path) -> dict[str, Any]:
+    """读取 YAML 文件，文件不存在时返回空 dict。"""
+    if not path.exists():
+        return {}
+    with path.open("r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
 
 
 @dataclass
 class Settings:
-    """全局配置，所有路径均基于 project_root 计算，支持环境变量覆盖。"""
+    """全局配置。
 
-    # ── 项目根 ──
-    project_root: Path = _PROJECT_ROOT
+    通常不直接实例化，通过 get_settings() 获取单例。
 
-    # ── 数据目录 ──
-    data_raw_dir: Path = field(default_factory=lambda: _PROJECT_ROOT / "data" / "raw")
-    data_processed_dir: Path = field(
-        default_factory=lambda: _PROJECT_ROOT / "data" / "processed"
-    )
-    data_output_dir: Path = field(
-        default_factory=lambda: _PROJECT_ROOT / "data" / "output"
-    )
+    Args:
+        config_path: YAML 配置文件路径，默认为项目根目录的 config.yaml。
+    """
 
-    # ── 数据列名 ──
-    input_col: str = "input"
-    output_col: str = "output"
+    config_path: Path = _DEFAULT_CONFIG_PATH
 
-    # ── 合法标签（意图分类） ──
-    valid_labels: list[str] = field(default_factory=lambda: ["寿险意图", "拒识"])
+    # ── 以下字段在 __post_init__ 中从 YAML + 环境变量填充 ──
 
-    # ── 系统提示词 ──
-    system_prompt: str = "你是一个意图分类模型，只能输出：寿险意图 或 拒识"
+    # 目录路径
+    project_root: Path = field(init=False)
+    data_raw_dir: Path = field(init=False)
+    data_processed_dir: Path = field(init=False)
+    data_output_dir: Path = field(init=False)
 
-    # ── 数据集划分比例 ──
-    train_ratio: float = 0.8
-    val_ratio: float = 0.1
-    test_ratio: float = 0.1
+    # 列名
+    input_col: str = field(init=False)
+    output_col: str = field(init=False)
 
-    # ── 随机种子（保证复现性） ──
-    random_seed: int = 42
+    # 标签 & 提示词
+    valid_labels: list[str] = field(init=False)
+    system_prompt: str = field(init=False)
+
+    # 划分比例
+    train_ratio: float = field(init=False)
+    val_ratio: float = field(init=False)
+    test_ratio: float = field(init=False)
+    random_seed: int = field(init=False)
+
+    # 运行时时间戳（每个 Settings 实例固定，整次运行保持一致）
+    run_timestamp: str = field(init=False)
 
     def __post_init__(self) -> None:
-        """初始化后：从环境变量读取覆盖值，并确保目录存在。"""
-        # 支持通过环境变量覆盖关键路径，方便 CI/CD 场景
-        if env_raw := os.getenv("DATA_RAW_DIR"):
-            self.data_raw_dir = Path(env_raw)
-        if env_proc := os.getenv("DATA_PROCESSED_DIR"):
-            self.data_processed_dir = Path(env_proc)
-        if env_out := os.getenv("DATA_OUTPUT_DIR"):
-            self.data_output_dir = Path(env_out)
+        cfg = _load_yaml(self.config_path)
 
-        # 校验比例之和
+        self.project_root = _PROJECT_ROOT
+
+        # ── 时间戳：格式 yyyy-MM-dd HHmmss ──
+        self.run_timestamp = datetime.now().strftime("%Y-%m-%d %H%M%S")
+
+        # ── 路径：YAML → 环境变量覆盖 ──
+        paths = cfg.get("paths", {})
+        self.data_raw_dir = Path(
+            os.getenv("DATA_RAW_DIR", _PROJECT_ROOT / paths.get("raw", "data/raw"))
+        )
+        self.data_processed_dir = Path(
+            os.getenv(
+                "DATA_PROCESSED_DIR",
+                _PROJECT_ROOT / paths.get("processed", "data/processed"),
+            )
+        )
+        # output 根目录（不含时间戳），供外部感知基础路径
+        self.data_output_dir = Path(
+            os.getenv(
+                "DATA_OUTPUT_DIR",
+                _PROJECT_ROOT / paths.get("output", "data/output"),
+            )
+        )
+
+        # ── 列名 ──
+        columns = cfg.get("columns", {})
+        self.input_col = columns.get("input", "input")
+        self.output_col = columns.get("output", "output")
+
+        # ── 标签 & 提示词 ──
+        self.valid_labels = cfg.get("valid_labels", ["寿险意图", "拒识"])
+        self.system_prompt = cfg.get(
+            "system_prompt", "你是一个意图分类模型，只能输出：寿险意图 或 拒识"
+        )
+
+        # ── 划分比例 ──
+        split = cfg.get("split", {})
+        self.train_ratio = float(split.get("train", 0.8))
+        self.val_ratio = float(split.get("val", 0.1))
+        self.test_ratio = float(split.get("test", 0.1))
+        self.random_seed = int(split.get("random_seed", 42))
+
+        # ── 校验比例之和 ──
         total = self.train_ratio + self.val_ratio + self.test_ratio
         if abs(total - 1.0) > 1e-6:
             raise ValueError(
-                f"train/val/test 比例之和必须为 1.0，当前为 {total:.4f}"
+                f"config.yaml split 比例之和必须为 1.0，当前为 {total:.4f}"
             )
 
-        # 自动创建目录
+        # ── 确保基础目录存在 ──
         for d in (self.data_raw_dir, self.data_processed_dir, self.data_output_dir):
             d.mkdir(parents=True, exist_ok=True)
 
-    # ── 便捷属性：常用输出文件路径 ──
+    # ── 带时间戳的运行输出目录 ──────────────────────────────
+    @property
+    def run_output_dir(self) -> Path:
+        """当前运行的输出子目录，如 data/output/2026-03-23 173526/"""
+        d = self.data_output_dir / self.run_timestamp
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    # ── 全量 JSONL（写入 processed/，不含时间戳，代表最新版本） ──
     @property
     def processed_jsonl_path(self) -> Path:
-        """转换后的全量 JSONL 文件。"""
         return self.data_processed_dir / "data.jsonl"
 
+    # ── 划分后的三份文件（带时间戳子目录） ──────────────────
     @property
     def train_jsonl_path(self) -> Path:
-        return self.data_output_dir / "train.jsonl"
+        return self.run_output_dir / "train.jsonl"
 
     @property
     def val_jsonl_path(self) -> Path:
-        return self.data_output_dir / "val.jsonl"
+        return self.run_output_dir / "val.jsonl"
 
     @property
     def test_jsonl_path(self) -> Path:
-        return self.data_output_dir / "test.jsonl"
+        return self.run_output_dir / "test.jsonl"
 
     @property
     def report_path(self) -> Path:
-        return self.data_output_dir / "analysis_report.txt"
+        return self.run_output_dir / "analysis_report.txt"
 
 
-# ── 单例缓存 ──
+# ── 单例 ────────────────────────────────────────────────────
 _settings_instance: Settings | None = None
 
 
-def get_settings() -> Settings:
-    """返回全局唯一的 Settings 实例（懒加载单例）。"""
+def get_settings(config_path: Path | None = None) -> Settings:
+    """返回全局唯一的 Settings 实例（懒加载单例）。
+
+    Args:
+        config_path: 首次调用时可指定自定义 YAML 路径；后续调用忽略此参数。
+    """
     global _settings_instance
     if _settings_instance is None:
-        _settings_instance = Settings()
+        _settings_instance = Settings(
+            config_path=config_path or _DEFAULT_CONFIG_PATH
+        )
     return _settings_instance
+
+
+def reset_settings() -> None:
+    """清除单例缓存（主要用于测试场景）。"""
+    global _settings_instance
+    _settings_instance = None

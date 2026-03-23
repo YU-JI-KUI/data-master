@@ -88,6 +88,7 @@ def main() -> None:
         cfg.random_seed = args.seed
 
     print("\n✂️  run_split：数据集划分")
+    print(f"   运行时间：{cfg.run_timestamp}")
     print(
         f"   比例 train={cfg.train_ratio} / val={cfg.val_ratio} / test={cfg.test_ratio}"
     )
@@ -116,7 +117,7 @@ def main() -> None:
     converter.convert_split(split_result.val,   cfg.val_jsonl_path)
     converter.convert_split(split_result.test,  cfg.test_jsonl_path)
 
-    print(f"\n✅ 划分完成，输出目录：{cfg.data_output_dir}")
+    print(f"\n✅ 划分完成，输出目录：{cfg.run_output_dir}")
     print(f"   train.jsonl : {len(split_result.train)} 条")
     print(f"   val.jsonl   : {len(split_result.val)} 条")
     print(f"   test.jsonl  : {len(split_result.test)} 条")

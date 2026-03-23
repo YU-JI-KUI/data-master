@@ -62,6 +62,7 @@ def main() -> None:
     cfg = get_settings()
 
     print("\n🔄 run_convert：数据转换")
+    print(f"   运行时间：{cfg.run_timestamp}")
     print(f"   输入：{args.input.resolve()}\n")
 
     # Step 1：加载
