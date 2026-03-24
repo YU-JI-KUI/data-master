@@ -150,27 +150,49 @@ class Settings:
         for d in (self.data_raw_dir, self.data_processed_dir, self.data_output_dir):
             d.mkdir(parents=True, exist_ok=True)
 
-    # ── 全量 JSONL：data/processed/data_yyyymmddHHmmss.jsonl ──
-    @property
-    def processed_jsonl_path(self) -> Path:
-        return self.data_processed_dir / f"data_{self.run_timestamp}.jsonl"
+    # ──────────────────────────────────────────────────────────
+    # 动态路径方法：根据 FormatSchema 的文件后缀生成正确路径
+    # 不同格式可能生成 .jsonl 或 .json 等不同后缀的文件
+    # ──────────────────────────────────────────────────────────
 
-    # ── 划分后三份文件：直接落在 output/ 下，文件名带时间戳 ──
-    @property
-    def train_jsonl_path(self) -> Path:
-        return self.data_output_dir / f"train_{self.run_timestamp}.jsonl"
+    def get_processed_path(self, schema: Any | None = None) -> Path:
+        """全量数据文件路径，后缀由 schema 决定。"""
+        ext = schema.file_extension if schema else self.output_format.file_extension
+        return self.data_processed_dir / f"data_{self.run_timestamp}{ext}"
 
-    @property
-    def val_jsonl_path(self) -> Path:
-        return self.data_output_dir / f"val_{self.run_timestamp}.jsonl"
+    def get_train_path(self, schema: Any | None = None) -> Path:
+        ext = schema.file_extension if schema else self.output_format.file_extension
+        return self.data_output_dir / f"train_{self.run_timestamp}{ext}"
 
-    @property
-    def test_jsonl_path(self) -> Path:
-        return self.data_output_dir / f"test_{self.run_timestamp}.jsonl"
+    def get_val_path(self, schema: Any | None = None) -> Path:
+        ext = schema.file_extension if schema else self.output_format.file_extension
+        return self.data_output_dir / f"val_{self.run_timestamp}{ext}"
+
+    def get_test_path(self, schema: Any | None = None) -> Path:
+        ext = schema.file_extension if schema else self.output_format.file_extension
+        return self.data_output_dir / f"test_{self.run_timestamp}{ext}"
 
     @property
     def report_path(self) -> Path:
+        """分析报告路径（固定 .txt 后缀，与格式无关）。"""
         return self.data_output_dir / f"analysis_report_{self.run_timestamp}.txt"
+
+    # ── 兼容旧属性（默认使用 config.yaml 中的格式后缀） ──────
+    @property
+    def processed_jsonl_path(self) -> Path:
+        return self.get_processed_path()
+
+    @property
+    def train_jsonl_path(self) -> Path:
+        return self.get_train_path()
+
+    @property
+    def val_jsonl_path(self) -> Path:
+        return self.get_val_path()
+
+    @property
+    def test_jsonl_path(self) -> Path:
+        return self.get_test_path()
 
 
 # ── 单例 ────────────────────────────────────────────────────

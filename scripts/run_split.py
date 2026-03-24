@@ -122,16 +122,18 @@ def main() -> None:
     split_result = splitter.split(df)
     print(split_result.summary())
 
-    # Step 3：写出三份 JSONL
+    # Step 3：写出三份文件
     converter = JsonlConverter(cfg, schema)
-    converter.convert_split(split_result.train, cfg.train_jsonl_path)
-    converter.convert_split(split_result.val,   cfg.val_jsonl_path)
-    converter.convert_split(split_result.test,  cfg.test_jsonl_path)
+    converter.convert_split(split_result.train, cfg.get_train_path(schema))
+    converter.convert_split(split_result.val,   cfg.get_val_path(schema))
+    converter.convert_split(split_result.test,  cfg.get_test_path(schema))
 
+    ext = schema.file_extension
+    ts  = cfg.run_timestamp
     print(f"\n✅ 划分完成，输出目录：{cfg.data_output_dir}")
-    print(f"   train.jsonl : {len(split_result.train)} 条")
-    print(f"   val.jsonl   : {len(split_result.val)} 条")
-    print(f"   test.jsonl  : {len(split_result.test)} 条")
+    print(f"   train_{ts}{ext} : {len(split_result.train)} 条")
+    print(f"   val_{ts}{ext}   : {len(split_result.val)} 条")
+    print(f"   test_{ts}{ext}  : {len(split_result.test)} 条")
 
 
 if __name__ == "__main__":

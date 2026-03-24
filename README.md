@@ -85,19 +85,19 @@ data-master/
 │
 ├── data/
 │   ├── raw/                     ← 📥 把你的原始 Excel 文件放在这里
-│   ├── processed/               ← 全量转换结果（data.jsonl）
-│   └── output/                  ← 划分后的训练数据，按时间戳分子目录
-│       └── 2026-03-23 183228/
-│           ├── train.jsonl
-│           ├── val.jsonl
-│           ├── test.jsonl
-│           └── analysis_report.txt
+│   ├── processed/               ← 全量转换结果（文件名含时间戳）
+│   │   └── data_20260323183228.jsonl
+│   └── output/                  ← 划分后的训练数据（文件名含时间戳）
+│       ├── train_20260323183228.jsonl
+│       ├── val_20260323183228.jsonl
+│       ├── test_20260323183228.jsonl
+│       └── analysis_report_20260323183228.txt
 │
 ├── src/                         ← 核心代码（通常不需要改动）
 │   ├── config/                  ← 配置加载，读取 config.yaml
 │   ├── loader/                  ← 从 Excel 读取数据
 │   ├── validator/               ← 数据校验：空值、非法标签、去重
-│   ├── converter/               ← 转换为 JSONL 格式，支持多平台格式切换
+│   ├── converter/               ← 转换为目标格式，支持多平台格式切换
 │   ├── splitter/                ← 分层抽样划分 train/val/test
 │   └── analyzer/                ← 统计分析，生成报告
 │
@@ -172,6 +172,7 @@ paths:
 # 切换不同平台的训练数据格式，目前支持：
 #   internal : 内部平台格式（conversations + human 角色 + id 字段）← 当前默认
 #   openai   : OpenAI/LLaMA-Factory 标准格式（messages + user 角色）
+#   ark      : Ark 平台格式（平铺 JSON 数组，含 instructions 字段）
 output_format:
   preset: internal
 ```
@@ -346,6 +347,32 @@ data/
 - 无 `id` 字段
 - 对话数组字段名为 `messages`
 - 用户角色名为 `user`
+- 文件后缀为 `.jsonl`，每行一个 JSON 对象
+
+### ark 格式（Ark 平台）
+
+```json
+[
+  {
+    "system":       "你是一个意图分类模型，只能输出：寿险意图 或 拒识",
+    "human":        "我想了解一下万能险",
+    "assistant":    "寿险意图",
+    "instructions": ""
+  },
+  {
+    "system":       "你是一个意图分类模型，只能输出：寿险意图 或 拒识",
+    "human":        "帮我写一首诗",
+    "assistant":    "拒识",
+    "instructions": ""
+  }
+]
+```
+
+特点：
+- 整个文件是一个 **JSON 数组**（不是 JSONL），格式为 `.json`
+- 字段平铺（无嵌套对话数组），直接使用 `system` / `human` / `assistant` / `instructions`
+- `instructions` 字段固定为空字符串
+- 适合直接上传到 Ark 等需要 JSON 数组格式的训练平台
 
 ---
 
@@ -357,7 +384,7 @@ data/
 
 ```yaml
 output_format:
-  preset: openai   # 从 internal 改为 openai
+  preset: ark   # 可选：internal / openai / ark
 ```
 
 之后所有运行都使用新格式。
@@ -367,25 +394,45 @@ output_format:
 不修改配置文件，只对本次运行生效：
 
 ```bash
+# 使用 openai 格式输出 .jsonl
 uv run python scripts/run_pipeline.py --input data/raw/sample.xlsx --format openai
+
+# 使用 ark 格式输出 .json 数组
+uv run python scripts/run_pipeline.py --input data/raw/sample.xlsx --format ark
 ```
 
 ### 添加新平台格式
 
-如果将来需要对接新的训练平台，只需在 `src/converter/format_schema.py` 文件末尾追加几行，无需改动任何其他代码：
+如果将来需要对接新的训练平台，只需在 `src/converter/format_schema.py` 文件末尾追加几行，无需改动任何其他代码。
+
+**conversations 嵌套风格（类似 openai/internal）：**
 
 ```python
-from src.converter.format_schema import FormatSchema, register
-
 register(FormatSchema(
-    name="新平台名称",            # 用于 --format 参数和 config.yaml
-    conversations_key="messages", # 对话数组的字段名
+    name="新平台名称",             # 用于 --format 参数和 config.yaml
+    conversations_key="messages",  # 对话数组的字段名
     role_map={
         "system":    "system",
-        "user":      "human",     # 按新平台要求填写角色名
+        "user":      "human",      # 按新平台要求填写角色名
         "assistant": "assistant",
     },
-    include_id=True,              # 是否需要 id 字段
+    include_id=True,               # 是否需要 id 字段
+    record_style="conversations",
+    output_type="jsonl",
+    file_extension=".jsonl",
+))
+```
+
+**flat 平铺风格（类似 ark）：**
+
+```python
+register(FormatSchema(
+    name="新平台名称",
+    flat_field_map={"system": "system", "user": "input", "assistant": "output"},
+    extra_fields={"source": ""},   # 追加额外静态字段
+    record_style="flat",
+    output_type="json_array",      # 整体 JSON 数组
+    file_extension=".json",
 ))
 ```
 
@@ -423,9 +470,9 @@ uv run python scripts/run_pipeline.py --input /Users/kris/data/sample.xlsx
 system_prompt: "你是一个新的提示词"
 ```
 
-**Q：多次运行后 data/output/ 目录下有很多时间戳子目录，想清理怎么办？**
+**Q：多次运行后 data/output/ 下有很多带时间戳的文件，想清理怎么办？**
 
-手动删除不需要的时间戳目录即可，`data/output/` 下的子目录之间互不影响。
+手动删除不需要的文件即可，时间戳不同的文件互不影响。建议按时间戳识别保留哪次运行结果，其余文件直接删除。
 
 ---
 
