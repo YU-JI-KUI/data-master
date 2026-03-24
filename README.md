@@ -113,6 +113,8 @@ data-master/
 
 将原始标注数据保存为 `.xlsx` 格式，放入 `data/raw/` 目录。
 
+> **多 sheet 支持：** Excel 中有多个 sheet 时，程序会自动读取全部 sheet 并合并处理，无需额外配置。每个 sheet 只需包含 `input` 和 `output` 两列，其余列会被自动忽略。不含这两列的 sheet 会跳过并打印警告。
+
 **Excel 格式要求：**
 
 | input | output |
@@ -147,11 +149,15 @@ valid_labels:
 # 修改这里不需要改任何代码
 system_prompt: "你是一个意图分类模型，只能输出：寿险意图 或 拒识"
 
-# ── Excel 列名映射 ────────────────────────────────────────
+# ── Excel 列名映射 & 前缀 ────────────────────────────────────
 # 如果你的 Excel 列名不是 input/output，在这里修改即可
+# input_prefix：写入训练文件时，统一拼接在每条 input 前面的固定文本
+#   留空（""）表示不追加任何前缀
+#   示例：input_prefix: "请判断以下文本的意图：\n"
 columns:
   input: input
   output: output
+  input_prefix: ""
 
 # ── 数据集划分比例 ────────────────────────────────────────
 # 三个值相加必须等于 1.0
@@ -357,13 +363,13 @@ data/
     "system":       "你是一个意图分类模型，只能输出：寿险意图 或 拒识",
     "human":        "我想了解一下万能险",
     "assistant":    "寿险意图",
-    "instructions": ""
+    "instruction": ""
   },
   {
     "system":       "你是一个意图分类模型，只能输出：寿险意图 或 拒识",
     "human":        "帮我写一首诗",
     "assistant":    "拒识",
-    "instructions": ""
+    "instruction": ""
   }
 ]
 ```

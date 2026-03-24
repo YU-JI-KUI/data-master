@@ -57,6 +57,11 @@ class JsonlConverter:
         Returns:
             符合目标平台格式的 dict。
         """
+        # 应用 input_prefix（在 config.yaml 中配置，留空则无影响）
+        prefix = self.settings.input_prefix
+        if prefix:
+            input_text = prefix + input_text
+
         if self.schema.record_style == "flat":
             return self._build_flat_record(input_text, output_text)
         else:

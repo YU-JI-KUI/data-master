@@ -132,17 +132,17 @@ INTERNAL = register(FormatSchema(
 # 整体为 JSON 数组，每条记录是平铺字段：
 #   [
 #     {
-#       "system":       "<system_prompt>",
-#       "human":        "<input>",
-#       "assistant":    "<output>",
-#       "instructions": ""
+#       "system":      "<system_prompt>",
+#       "human":       "<input>",
+#       "assistant":   "<output>",
+#       "instruction": ""
 #     },
 #     ...
 #   ]
 ARK = register(FormatSchema(
     name="ark",
     flat_field_map={"system": "system", "user": "human", "assistant": "assistant"},
-    extra_fields={"instructions": ""},
+    extra_fields={"instruction": ""},
     record_style="flat",
     output_type="json_array",
     file_extension=".json",

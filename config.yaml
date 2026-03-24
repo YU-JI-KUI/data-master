@@ -13,11 +13,14 @@ valid_labels:
 # 写入每条 JSONL 的 system message，影响模型微调时的角色定位
 system_prompt: "你是一个意图分类模型，只能输出：寿险意图 或 拒识"
 
-# ── 数据列名 ──────────────────────────────────────────────
-# 对应 Excel 中的列标题
+# ── 数据列名 & 前缀 ────────────────────────────────────────
+# input / output 对应 Excel 中的列标题
+# input_prefix：追加在每条 input 文本前面的固定前缀，留空则不追加
+# 例如：input_prefix: "请判断以下文本的意图：\n"
 columns:
   input: input
   output: output
+  input_prefix: ""
 
 # ── 数据集划分比例 ────────────────────────────────────────
 # train + val + test 必须等于 1.0

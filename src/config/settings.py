@@ -56,9 +56,10 @@ class Settings:
     data_processed_dir: Path = field(init=False)
     data_output_dir: Path = field(init=False)
 
-    # 列名
+    # 列名 & 前缀
     input_col: str = field(init=False)
     output_col: str = field(init=False)
+    input_prefix: str = field(init=False)
 
     # 标签 & 提示词
     valid_labels: list[str] = field(init=False)
@@ -103,10 +104,11 @@ class Settings:
             )
         )
 
-        # ── 列名 ──
+        # ── 列名 & 前缀 ──
         columns = cfg.get("columns", {})
         self.input_col = columns.get("input", "input")
         self.output_col = columns.get("output", "output")
+        self.input_prefix = columns.get("input_prefix", "")
 
         # ── 标签 & 提示词 ──
         self.valid_labels = cfg.get("valid_labels", ["寿险意图", "拒识"])
