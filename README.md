@@ -3,6 +3,7 @@
 > 大模型训练数据处理与管理工具，专为 **Qwen3-8B 意图分类微调**设计。
 >
 > 将原始标注数据（Excel）自动处理成微调所需的 JSONL 格式，并完成清洗、划分、分析全流程。
+> 同时提供**语义冲突检测**能力，自动识别新增数据中的标注错误和边界样本。
 >
 > 支持标签：`寿险意图` / `拒识`
 
@@ -19,6 +20,7 @@
 - [输出文件说明](#输出文件说明)
 - [输出格式详解](#输出格式详解)
 - [切换平台格式](#切换平台格式)
+- [语义冲突检测](#语义冲突检测)
 - [常见问题](#常见问题)
 - [进阶：在代码中调用各模块](#进阶在代码中调用各模块)
 
@@ -95,16 +97,21 @@ data-master/
 │
 ├── src/                         ← 核心代码（通常不需要改动）
 │   ├── config/                  ← 配置加载，读取 config.yaml
-│   ├── loader/                  ← 从 Excel 读取数据
+│   ├── loader/                  ← 从 Excel 读取数据（支持多 sheet）
 │   ├── validator/               ← 数据校验：空值、非法标签、去重
 │   ├── converter/               ← 转换为目标格式，支持多平台格式切换
 │   ├── splitter/                ← 分层抽样划分 train/val/test
-│   └── analyzer/                ← 统计分析，生成报告
+│   ├── analyzer/                ← 统计分析，生成报告
+│   ├── embedding/               ← 本地 Embedding 模型封装（带缓存）
+│   ├── similarity/              ← FAISS 向量索引与检索
+│   ├── filtering/               ← 相似度阈值筛选，输出冲突样本
+│   └── pipelines/               ← 串联各模块的完整流水线
 │
 └── scripts/                     ← ⭐ 日常使用的入口脚本
     ├── run_pipeline.py          ← 一键完整流水线（推荐）
     ├── run_convert.py           ← 仅做格式转换
-    └── run_split.py             ← 仅做数据集划分
+    ├── run_split.py             ← 仅做数据集划分
+    └── run_conflict_detection.py ← 语义冲突检测
 ```
 
 ---
@@ -443,6 +450,108 @@ register(FormatSchema(
 ```
 
 注册后即可通过 `--format 新平台名称` 或 config.yaml 使用。
+
+---
+
+## 语义冲突检测
+
+### 什么是语义冲突？
+
+当向训练数据中加入**新增拒识样本**时，部分样本可能：
+
+- 实际语义接近"寿险意图"（标注错误）
+- 与已有寿险样本高度相似（边界模糊）
+
+这类样本会污染训练数据，损害模型的决策边界。**语义冲突检测模块**通过 Embedding + FAISS 自动识别这类高风险样本，供人工审核。
+
+---
+
+### 数据格式要求
+
+运行检测前，Excel 的 output 列须包含三种标签：
+
+| output 值 | 含义 |
+|-----------|------|
+| `寿险意图` | 已有寿险样本（参考库） |
+| `拒识` | 已有拒识样本（不参与检测，忽略）|
+| `拒识_new` | **新增拒识样本**（检测对象） |
+
+> 寿险意图和拒识_new 标签名可在 config.yaml 中修改。
+
+---
+
+### 第一步：配置 config.yaml
+
+找到 `conflict_detection` 节，填写本地模型路径：
+
+```yaml
+conflict_detection:
+  embedding:
+    model_path: "D:/models/bge-base-zh"   # 改为你的本地模型路径
+    batch_size: 64
+    cache_path: "data/cache/life_embeddings.npy"
+  faiss:
+    topk: 1
+  threshold: 0.9     # 相似度阈值：≥ 0.9 → 高风险
+  labels:
+    life: "寿险意图"
+    new_reject: "拒识_new"
+  output:
+    path: "data/output/high_risk_samples.xlsx"
+```
+
+> **模型推荐：** `bge-base-zh`（百度开源，中文语义能力强）。从 HuggingFace 下载到本地后填写路径，不依赖外网。
+
+---
+
+### 第二步：运行检测
+
+```bash
+# 基本用法（使用 config.yaml 所有配置）
+uv run python scripts/run_conflict_detection.py --input data/raw/sample.xlsx
+
+# 临时调低阈值（扩大检测范围）
+uv run python scripts/run_conflict_detection.py \
+  --input data/raw/sample.xlsx \
+  --threshold 0.85
+
+# 检索 TopK=3（每条新拒识返回 3 条最相似寿险样本）
+uv run python scripts/run_conflict_detection.py \
+  --input data/raw/sample.xlsx \
+  --topk 3
+
+# 寿险数据有更新时，强制刷新缓存
+uv run python scripts/run_conflict_detection.py \
+  --input data/raw/sample.xlsx \
+  --refresh-cache
+```
+
+---
+
+### 输出结果
+
+检测结果保存至 `data/output/high_risk_samples.xlsx`，包含三列：
+
+| 字段 | 说明 |
+|------|------|
+| `input` | 新拒识文本 |
+| `similarity` | 与寿险样本的 cosine 相似度（0~1，越高越危险）|
+| `similar_text` | 最相似的寿险意图文本（供人工对比） |
+
+结果按 similarity 降序排列，优先展示最高风险样本。
+
+---
+
+### 性能说明
+
+| 操作 | 耗时估计 |
+|------|---------|
+| 首次计算寿险 embedding（25,000 条）| 约 3~8 分钟（CPU）|
+| 后续运行（命中缓存）| 数秒 |
+| 新拒识 embedding（1,000 条）| 约 10~30 秒（CPU）|
+| FAISS 检索 | < 1 秒 |
+
+> 寿险 embedding 会自动缓存至 `data/cache/life_embeddings.npy`，下次运行直接复用，无需重新计算。
 
 ---
 

@@ -9,12 +9,18 @@ dependencies = [
     "openpyxl>=3.1.5",
     "scikit-learn>=1.4.0",
     "pyyaml>=6.0.0",
+    # 语义冲突检测模块依赖
+    "sentence-transformers>=3.0.0",
+    "faiss-cpu>=1.7.4",
+    "numpy>=1.26.0",
+    "tqdm>=4.66.0",
 ]
 
 [project.scripts]
-run-pipeline = "scripts.run_pipeline:main"
-run-convert  = "scripts.run_convert:main"
-run-split    = "scripts.run_split:main"
+run-pipeline           = "scripts.run_pipeline:main"
+run-convert            = "scripts.run_convert:main"
+run-split              = "scripts.run_split:main"
+run-conflict-detection = "scripts.run_conflict_detection:main"
 
 [build-system]
 requires = ["hatchling"]

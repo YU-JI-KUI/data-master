@@ -43,7 +43,42 @@ paths:
 #
 #   openai    : messages + user/assistant 角色（OpenAI / LLaMA-Factory 标准）
 #   internal  : conversations + human/assistant 角色 + 自增 id（内部平台）
+#   ark       : 平铺 JSON 数组，含 instruction 字段（Ark 平台）
 #
 # 也可通过命令行参数临时覆盖：--format openai
 output_format:
   preset: internal
+
+# ── 语义冲突检测配置 ───────────────────────────────────────
+# 用于 run_conflict_detection.py：检测新增拒识数据中与寿险意图
+# 语义高度相似的样本（潜在标注错误或污染数据）
+conflict_detection:
+
+  embedding:
+    # 本地 SentenceTransformer 模型路径（必填，不能依赖外网）
+    # 示例（Windows）：D:/models/bge-base-zh
+    # 示例（macOS）  ：/Users/kris/models/bge-base-zh
+    model_path: ""
+    # 每批编码的文本数，内存不足时调小
+    batch_size: 64
+    # 寿险意图 embedding 缓存路径（首次运行后自动保存，下次直接复用）
+    cache_path: "data/cache/life_embeddings.npy"
+
+  faiss:
+    # 检索最近邻数（1 = 只返回最相似的 1 条寿险样本）
+    # 调大可在输出中看到多条参考，便于人工核查
+    topk: 1
+
+  # 高风险判定阈值：cosine similarity ≥ threshold → 标记为高风险
+  # 推荐范围：0.85 ~ 0.95；数据质量要求高时使用 0.9
+  threshold: 0.9
+
+  labels:
+    # Excel output 列中，寿险意图的标签值
+    life: "寿险意图"
+    # Excel output 列中，新增拒识的标签值（区别于已有拒识）
+    new_reject: "拒识_new"
+
+  output:
+    # 高风险样本输出 Excel 路径（相对于项目根目录）
+    path: "data/output/high_risk_samples.xlsx"
