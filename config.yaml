@@ -38,6 +38,14 @@ paths:
   processed: data/processed
   output: data/output
 
+# ── 数据清洗输出配置（run_clean.py）────────────────────────
+# 控制清洗后 Excel 的列宽（单位：字符数）
+# 也可通过命令行参数 --input-col-width / --output-col-width 临时覆盖
+clean:
+  col_widths:
+    input: 60    # input 列宽，建议 50~100
+    output: 16   # output 列宽，标签较短，16 足够
+
 # ── 输出格式 ──────────────────────────────────────────────
 # preset 指定内置格式名称，切换平台时只需改这一行：
 #

@@ -20,6 +20,7 @@ dependencies = [
 run-pipeline           = "scripts.run_pipeline:main"
 run-convert            = "scripts.run_convert:main"
 run-split              = "scripts.run_split:main"
+run-clean              = "scripts.run_clean:main"
 run-conflict-detection = "scripts.run_conflict_detection:main"
 
 [build-system]
