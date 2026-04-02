@@ -6,7 +6,7 @@
   2. 项目根目录下的 config.yaml
   3. 代码内置默认值
 
-每次运行时，输出目录会自动追加时间戳子目录（格式：yyyy-MM-dd HHmmss），
+每次运行时，输出文件名会自动追加时间戳（格式：yyyy-mm-dd_HH-mm-ss），
 保证多次运行互不覆盖，方便对比不同版本的处理结果。
 """
 
@@ -82,8 +82,10 @@ class Settings:
 
         self.project_root = _PROJECT_ROOT
 
-        # ── 时间戳：格式 yyyymmddHHmmss（直接拼入文件名，无空格/分隔符）
-        self.run_timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        # ── 时间戳：格式 yyyy-mm-dd_HH-mm-ss（可读性好，兼容 Windows 文件名）
+        # 示例：2026-04-02_18-32-28
+        # 注：Windows 文件名不允许冒号和空格，因此用连字符替代
+        self.run_timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
         # ── 路径：YAML → 环境变量覆盖 ──
         paths = cfg.get("paths", {})

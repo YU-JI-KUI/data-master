@@ -238,9 +238,9 @@ uv run python scripts/run_pipeline.py --input data/raw/你的文件名.xlsx
 ──────────────────────────────────────────
 
    输出目录：data/output
-   ├── train_20260323183228.jsonl  (236 条)
-   ├── val_20260323183228.jsonl    (30 条)
-   └── test_20260323183228.jsonl   (29 条)
+   ├── train_2026-03-23_18-32-28.jsonl  (236 条)
+   ├── val_2026-03-23_18-32-28.jsonl    (30 条)
+   └── test_2026-03-23_18-32-28.jsonl   (29 条)
 
 📊 [4/4] 生成分析报告...
 ✨ 流水线执行完成！
@@ -302,23 +302,24 @@ uv run python scripts/run_split.py \
 
 ## 输出文件说明
 
-每次运行生成的文件名都会自动追加时间戳后缀，格式为 `yyyymmddHHmmss`（14 位数字）。
+每次运行生成的文件名都会自动追加时间戳后缀，格式为 `yyyy-mm-dd_HH-mm-ss`。
 
 ```
 data/
 ├── processed/
-│   ├── data_20260323191342.jsonl   ← 第一次运行的全量数据
-│   └── data_20260324091500.jsonl   ← 第二次运行的全量数据
+│   ├── data_2026-03-23_19-13-42.jsonl   ← 第一次运行的全量数据
+│   └── data_2026-03-24_09-15-00.jsonl   ← 第二次运行的全量数据
 └── output/
-    ├── train_20260323191342.jsonl
-    ├── val_20260323191342.jsonl
-    ├── test_20260323191342.jsonl
-    ├── analysis_report_20260323191342.txt
-    ├── train_20260324091500.jsonl  ← 第二次运行，文件名不同，不会覆盖
+    ├── train_2026-03-23_19-13-42.jsonl
+    ├── val_2026-03-23_19-13-42.jsonl
+    ├── test_2026-03-23_19-13-42.jsonl
+    ├── analysis_report_2026-03-23_19-13-42.txt
+    ├── train_2026-03-24_09-15-00.jsonl  ← 第二次运行，文件名不同，不会覆盖
     └── ...
 ```
 
 > 时间戳文件名保证了多次运行的结果互不覆盖，直接通过文件名就能区分每次运行的时间。
+> 注：Windows 文件名不允许冒号和空格，故使用 `-` 替代 `:`，`_` 替代空格。
 
 ---
 
@@ -332,9 +333,9 @@ data/
 {
   "id": 1,
   "conversations": [
-    {"role": "system",    "content": "你是一个意图分类模型，只能输出：寿险意图 或 拒识"},
-    {"role": "human",     "content": "我想了解一下万能险"},
-    {"role": "assistant", "content": "寿险意图"}
+    {"role": "system",    "context": "你是一个意图分类模型，只能输出：寿险意图 或 拒识"},
+    {"role": "human",     "context": "我想了解一下万能险"},
+    {"role": "assistant", "context": "寿险意图"}
   ]
 }
 ```
@@ -343,6 +344,7 @@ data/
 - 有自增 `id` 字段（从 1 开始）
 - 对话数组字段名为 `conversations`
 - 用户角色名为 `human`
+- 文本字段名为 `context`（内部平台历史遗留问题，平台方暂不修复，故此处适配）
 
 ### openai 格式（OpenAI / LLaMA-Factory 标准）
 
@@ -360,6 +362,7 @@ data/
 - 无 `id` 字段
 - 对话数组字段名为 `messages`
 - 用户角色名为 `user`
+- 文本字段名为标准的 `content`
 - 文件后缀为 `.jsonl`，每行一个 JSON 对象
 
 ### ark 格式（Ark 平台）
@@ -367,24 +370,21 @@ data/
 ```json
 [
   {
-    "system":       "你是一个意图分类模型，只能输出：寿险意图 或 拒识",
-    "human":        "我想了解一下万能险",
-    "assistant":    "寿险意图",
-    "instruction": ""
+    "instruction": "你是一个意图分类模型，只能输出：寿险意图 或 拒识",
+    "input":       "我想了解一下万能险",
+    "output":      "寿险意图"
   },
   {
-    "system":       "你是一个意图分类模型，只能输出：寿险意图 或 拒识",
-    "human":        "帮我写一首诗",
-    "assistant":    "拒识",
-    "instruction": ""
+    "instruction": "你是一个意图分类模型，只能输出：寿险意图 或 拒识",
+    "input":       "帮我写一首诗",
+    "output":      "拒识"
   }
 ]
 ```
 
 特点：
 - 整个文件是一个 **JSON 数组**（不是 JSONL），格式为 `.json`
-- 字段平铺（无嵌套对话数组），直接使用 `system` / `human` / `assistant` / `instructions`
-- `instructions` 字段固定为空字符串
+- 字段平铺（无嵌套对话数组），使用 `instruction` / `input` / `output`
 - 适合直接上传到 Ark 等需要 JSON 数组格式的训练平台
 
 ---
@@ -441,8 +441,8 @@ register(FormatSchema(
 ```python
 register(FormatSchema(
     name="新平台名称",
-    flat_field_map={"system": "system", "user": "input", "assistant": "output"},
-    extra_fields={"source": ""},   # 追加额外静态字段
+    # 将内部角色（system/user/assistant）映射到平台字段名
+    flat_field_map={"system": "instruction", "user": "input", "assistant": "output"},
     record_style="flat",
     output_type="json_array",      # 整体 JSON 数组
     file_extension=".json",
@@ -572,6 +572,10 @@ uv run python scripts/run_pipeline.py --input /Users/kris/data/sample.xlsx
 **Q：校验后数据大量减少，非法标签行数很多？**
 
 说明 Excel 中的 output 列有不符合规范的值。检查标签是否有多余空格、全角/半角问题，或者拼写错误（如「寿险相关」应该是「寿险意图」）。
+
+**Q：重复数据是保留第一条还是最后一条？**
+
+保留**最后一条**。原因是 Excel 中靠后的行代表更新的标注，当同一条 input 有多次标注时，最新的标注记录在最后，保留最后一条可确保最新标注生效。
 
 **Q：提示"分层抽样失败，回退到随机划分"？**
 

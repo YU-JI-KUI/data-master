@@ -53,7 +53,7 @@ class ValidationResult:
             f"  清洗后行数   : {len(self.cleaned_df)}",
             f"  空值行数     : {self.null_count}（已移除）",
             f"  非法标签行数 : {self.invalid_label_count}（已移除）",
-            f"  重复行数     : {self.duplicate_count}（已去重，保留第一条）",
+            f"  重复行数     : {self.duplicate_count}（已去重，保留最后一条）",
         ]
         if self.errors:
             lines.append("  错误：")
@@ -105,7 +105,7 @@ class DataValidator:
         # ── Step 3：去重（基于 input 列） ──
         df, dup_count = self._deduplicate(df)
         if dup_count > 0:
-            warnings.append(f"发现 {dup_count} 条重复 input，已去重（保留第一条）")
+            warnings.append(f"发现 {dup_count} 条重复 input，已去重（保留最后一条）")
             logger.warning(f"去重：移除 {dup_count} 条重复")
 
         # ── 判断整体是否通过：清洗后必须有数据 ──
@@ -166,14 +166,18 @@ class DataValidator:
         return df[valid_mask].copy(), invalid_count
 
     def _deduplicate(self, df: pd.DataFrame) -> tuple[pd.DataFrame, int]:
-        """基于 input 列去重，保留第一条。
+        """基于 input 列去重，保留最后一条。
+
+        保留最后一条而非第一条的原因：
+        Excel 中靠后的行代表更新的标注，标注有修正时通常追加在末尾。
+        保留最后一条可确保最新标注生效。
 
         Returns:
             (去重后 df, 移除的重复行数)
         """
         in_col = self.settings.input_col
         before = len(df)
-        df = df.drop_duplicates(subset=[in_col], keep="first")
+        df = df.drop_duplicates(subset=[in_col], keep="last")
         dup_count = before - len(df)
         return df.copy(), dup_count
 

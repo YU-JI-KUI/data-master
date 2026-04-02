@@ -70,12 +70,18 @@ class JsonlConverter:
     def _build_conversations_record(
         self, input_text: str, output_text: str, idx: int
     ) -> dict:
-        """构建嵌套 conversations 风格的记录（openai / internal）。"""
+        """构建嵌套 conversations 风格的记录（openai / internal）。
+
+        文本字段名由 schema.content_key 控制：
+          openai   → "content"（标准）
+          internal → "context"（内部平台历史遗留 bug，平台方暂不修复）
+        """
         schema = self.schema
+        ck = schema.content_key   # "content" or "context"
         conversations = [
-            {"role": schema.map_role("system"),    "content": self.settings.system_prompt},
-            {"role": schema.map_role("user"),       "content": input_text},
-            {"role": schema.map_role("assistant"),  "content": output_text},
+            {"role": schema.map_role("system"),    ck: self.settings.system_prompt},
+            {"role": schema.map_role("user"),       ck: input_text},
+            {"role": schema.map_role("assistant"),  ck: output_text},
         ]
         record: dict = {}
         if schema.include_id:

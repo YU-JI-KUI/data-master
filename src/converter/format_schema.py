@@ -31,6 +31,8 @@ class FormatSchema:
         role_map:          角色映射，key 为内部角色（system/user/assistant），
                            value 为目标平台期望的角色名。
         include_id:        是否在每条记录前加自增 id 字段。
+        content_key:       对话条目中承载文本的字段名，通常为 "content"。
+                           内部平台因历史 bug 使用 "context"，故该字段可配。
 
         ── flat 风格字段（record_style="flat" 时使用） ──
         flat_field_map:    将内部角色名映射到平铺字段名，
@@ -51,6 +53,9 @@ class FormatSchema:
         "system": "system", "user": "user", "assistant": "assistant"
     })
     include_id: bool = False
+    # 对话条目中承载文本的字段名，通常为 "content"；
+    # 内部平台存在历史遗留 bug，使用 "context" 代替 "content"
+    content_key: str = "content"
 
     # ── flat 风格 ──
     flat_field_map: dict[str, str] = field(default_factory=dict)
@@ -117,12 +122,15 @@ OPENAI = register(FormatSchema(
 
 # ── 格式 2：内部平台格式 ──────────────────────────────────
 # 每行一个 JSON 对象，含自增 id：
-#   {"id": 1, "conversations": [{"role": "system", ...}, {"role": "human", ...}, ...]}
+#   {"id": 1, "conversations": [{"role": "system", "context": "..."}, {"role": "human", "context": "..."}, ...]}
+# 注意：内部平台存在历史遗留 bug，对话条目的文本字段使用 "context" 而非标准的 "content"，
+#       平台方暂不修复，因此此处配置 content_key="context" 以适配。
 INTERNAL = register(FormatSchema(
     name="internal",
     conversations_key="conversations",
     role_map={"system": "system", "user": "human", "assistant": "assistant"},
     include_id=True,
+    content_key="context",
     record_style="conversations",
     output_type="jsonl",
     file_extension=".jsonl",
@@ -132,17 +140,19 @@ INTERNAL = register(FormatSchema(
 # 整体为 JSON 数组，每条记录是平铺字段：
 #   [
 #     {
-#       "system":      "<system_prompt>",
-#       "human":       "<input>",
-#       "assistant":   "<output>",
-#       "instruction": ""
+#       "instruction": "<system_prompt>",
+#       "input":       "<用户问句>",
+#       "output":      "<标签>"
 #     },
 #     ...
 #   ]
+# 字段名映射：内部角色 → Ark 平台字段名
+#   system    → instruction
+#   user      → input
+#   assistant → output
 ARK = register(FormatSchema(
     name="ark",
-    flat_field_map={"system": "system", "user": "human", "assistant": "assistant"},
-    extra_fields={"instruction": ""},
+    flat_field_map={"system": "instruction", "user": "input", "assistant": "output"},
     record_style="flat",
     output_type="json_array",
     file_extension=".json",
