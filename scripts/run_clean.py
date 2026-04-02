@@ -4,7 +4,7 @@ run_clean.py —— 数据清洗：Excel → 清洗后 Excel
 清洗步骤（与 run_pipeline 的校验逻辑一致）：
   1. 移除 input / output 列中的空值行
   2. 移除 output 列中不在 valid_labels 列表内的非法标签行
-  3. 基于 input 列去重（保留第一条）
+  3. 基于 input 列去重（保留最后一条——靠后的行代表更新的标注）
 
 输出：
   data/processed/cleaned_<timestamp>.xlsx

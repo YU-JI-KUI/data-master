@@ -56,7 +56,7 @@ source ~/.zshrc    # macOS (zsh)
 ### 2. 克隆项目
 
 ```bash
-git clone https://github.com/你的用户名/data-master.git
+git clone https://github.com/YU-JI-KUI/data-master.git
 cd data-master
 ```
 
@@ -68,10 +68,17 @@ uv sync
 
 执行后 uv 会自动创建虚拟环境（`.venv/` 目录）并安装所有依赖：
 
+**基础数据处理**
 - `pandas` — 数据处理
-- `openpyxl` — 读取 Excel 文件
+- `openpyxl` — 读写 Excel 文件
 - `scikit-learn` — 分层抽样划分
 - `pyyaml` — 读取 YAML 配置文件
+
+**语义冲突检测（`run_conflict_detection.py` 使用）**
+- `sentence-transformers` — 本地 Embedding 模型加载与推理
+- `faiss-cpu` — 向量相似度检索
+- `numpy` — 向量矩阵运算
+- `tqdm` — 进度条显示
 
 > **注意：** 不需要手动激活虚拟环境，运行脚本时统一用 `uv run python ...`，uv 会自动使用项目的虚拟环境。
 
@@ -83,35 +90,40 @@ uv sync
 data-master/
 │
 ├── config.yaml                  ← ⭐ 唯一需要你修改的配置文件
-├── pyproject.toml               ← 项目元信息和依赖声明
+├── pyproject.toml               ← 项目元信息、依赖声明、脚本入口
 │
 ├── data/
 │   ├── raw/                     ← 📥 把你的原始 Excel 文件放在这里
+│   ├── cache/                   ← 寿险 Embedding 缓存（自动生成，可删除重建）
+│   │   └── life_embeddings.npy
 │   ├── processed/               ← 全量转换结果（文件名含时间戳）
-│   │   └── data_20260323183228.jsonl
+│   │   ├── data_2026-03-23_19-13-42.jsonl
+│   │   └── cleaned_2026-03-23_19-13-42.xlsx  ← run_clean 输出
 │   └── output/                  ← 划分后的训练数据（文件名含时间戳）
-│       ├── train_20260323183228.jsonl
-│       ├── val_20260323183228.jsonl
-│       ├── test_20260323183228.jsonl
-│       └── analysis_report_20260323183228.txt
+│       ├── train_2026-03-23_19-13-42.jsonl
+│       ├── val_2026-03-23_19-13-42.jsonl
+│       ├── test_2026-03-23_19-13-42.jsonl
+│       ├── analysis_report_2026-03-23_19-13-42.txt
+│       └── high_risk_samples.xlsx            ← run_conflict_detection 输出
 │
 ├── src/                         ← 核心代码（通常不需要改动）
 │   ├── config/                  ← 配置加载，读取 config.yaml
-│   ├── loader/                  ← 从 Excel 读取数据（支持多 sheet）
-│   ├── validator/               ← 数据校验：空值、非法标签、去重
+│   ├── loader/                  ← 从 Excel 读取数据（支持多 sheet，忽略多余列）
+│   ├── validator/               ← 数据校验：空值/非法标签/去重（保留最后一条）
 │   ├── converter/               ← 转换为目标格式，支持多平台格式切换
 │   ├── splitter/                ← 分层抽样划分 train/val/test
 │   ├── analyzer/                ← 统计分析，生成报告
-│   ├── embedding/               ← 本地 Embedding 模型封装（带缓存）
-│   ├── similarity/              ← FAISS 向量索引与检索
-│   ├── filtering/               ← 相似度阈值筛选，输出冲突样本
-│   └── pipelines/               ← 串联各模块的完整流水线
+│   ├── embedding/               ← 本地 SentenceTransformer 封装（支持 .npy 缓存）
+│   ├── similarity/              ← FAISS IndexFlatIP 向量检索
+│   ├── filtering/               ← 相似度阈值筛选，标记高风险冲突样本
+│   └── pipelines/               ← 串联各模块的完整检测流水线
 │
 └── scripts/                     ← ⭐ 日常使用的入口脚本
-    ├── run_pipeline.py          ← 一键完整流水线（推荐）
-    ├── run_convert.py           ← 仅做格式转换
-    ├── run_split.py             ← 仅做数据集划分
-    └── run_conflict_detection.py ← 语义冲突检测
+    ├── run_pipeline.py           ← 一键完整流水线：加载→清洗→转换→划分→分析
+    ├── run_convert.py            ← 仅做格式转换（Excel → JSONL/JSON）
+    ├── run_split.py              ← 仅做数据集划分
+    ├── run_clean.py              ← 仅做数据清洗，输出 Excel（含自定义列宽）
+    └── run_conflict_detection.py ← 语义冲突检测（新拒识 vs 寿险意图）
 ```
 
 ---
