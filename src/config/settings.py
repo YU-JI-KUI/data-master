@@ -70,6 +70,9 @@ class Settings:
     val_ratio: float = field(init=False)
     test_ratio: float = field(init=False)
     random_seed: int = field(init=False)
+    # 新增数据 sheet 名（该 sheet 数据直接注入 train+val，不参与划分）
+    # 留空字符串表示禁用此功能
+    new_data_sheet: str = field(init=False)
 
     # 运行时时间戳（每个 Settings 实例固定，整次运行保持一致）
     run_timestamp: str = field(init=False)
@@ -124,6 +127,7 @@ class Settings:
         self.val_ratio = float(split.get("val", 0.1))
         self.test_ratio = float(split.get("test", 0.1))
         self.random_seed = int(split.get("random_seed", 42))
+        self.new_data_sheet = str(split.get("new_data_sheet", ""))
 
         # ── 校验比例之和 ──
         total = self.train_ratio + self.val_ratio + self.test_ratio

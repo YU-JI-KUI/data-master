@@ -95,6 +95,69 @@ class ExcelLoader:
         logger.info(f"加载完成，合并后共 {len(result)} 条记录")
         return result
 
+    def load_separated(
+        self,
+        file_path: str | Path,
+        new_sheet_name: str,
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """读取 Excel，将指定 sheet 与其余 sheet 分开返回。
+
+        用于"新增数据直接注入 train+val"场景：
+          - regular_df：除 new_sheet_name 之外所有 sheet 的合并数据，走正常 8:1:1 划分
+          - new_df    ：new_sheet_name 对应 sheet 的数据，直接全量注入 train 和 val
+
+        若 new_sheet_name 为空或 Excel 中不存在该 sheet，new_df 返回空 DataFrame。
+
+        Args:
+            file_path:      Excel 文件路径。
+            new_sheet_name: 新增数据所在 sheet 的名称（来自 config.yaml split.new_data_sheet）。
+
+        Returns:
+            (regular_df, new_df) 两个 DataFrame，均已完成列过滤和类型统一。
+        """
+        path = Path(file_path)
+        if not path.exists():
+            raise FileNotFoundError(f"找不到 Excel 文件：{path.resolve()}")
+
+        logger.info(f"正在加载 Excel 文件（分离模式）：{path}")
+        sheets: dict[str, pd.DataFrame] = pd.read_excel(
+            path, sheet_name=None, engine="openpyxl"
+        )
+        logger.info(f"文件共 {len(sheets)} 个 sheet：{list(sheets.keys())}")
+
+        required_cols = [self.settings.input_col, self.settings.output_col]
+        regular_frames: list[pd.DataFrame] = []
+        new_df = pd.DataFrame(columns=required_cols)
+
+        for sheet_name, raw_df in sheets.items():
+            missing = [c for c in required_cols if c not in raw_df.columns]
+            if missing:
+                logger.warning(f"Sheet '{sheet_name}' 缺少列 {missing}，已跳过")
+                continue
+
+            df = raw_df[required_cols].copy()
+            df[self.settings.input_col]  = df[self.settings.input_col].astype(str).str.strip()
+            df[self.settings.output_col] = df[self.settings.output_col].astype(str).str.strip()
+
+            if new_sheet_name and sheet_name == new_sheet_name:
+                logger.info(f"Sheet '{sheet_name}'（新增数据）：{len(df)} 条，将直接注入 train+val")
+                new_df = df
+            else:
+                logger.info(f"Sheet '{sheet_name}'（常规数据）：{len(df)} 条")
+                regular_frames.append(df)
+
+        if not regular_frames:
+            raise ValueError(
+                f"除 '{new_sheet_name}' 外的所有 sheet 均缺少必要列 {required_cols}，"
+                "请检查 Excel 文件。"
+            )
+
+        regular_df = pd.concat(regular_frames, ignore_index=True)
+        logger.info(
+            f"加载完成：常规数据 {len(regular_df)} 条，新增数据 {len(new_df)} 条"
+        )
+        return regular_df, new_df
+
     def load_from_raw_dir(self, filename: str) -> pd.DataFrame:
         """从配置的 raw 目录加载指定文件名的 Excel（自动处理所有 sheet）。
 

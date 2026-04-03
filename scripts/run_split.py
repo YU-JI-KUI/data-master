@@ -1,10 +1,11 @@
 """
-run_split.py —— 仅执行数据划分（JSONL → train/val/test）
+run_split.py —— 仅执行数据划分（Excel → train/val/test）
 
-适用场景：已有全量 JSONL，需要重新划分（比如调整比例）
+适用场景：需要重新划分数据集（比如调整比例）
 
-注意：此脚本从 Excel 读取（保证数据最新），划分后写出三份 JSONL。
-如需从现有 JSONL 重新划分，可扩展实现 JsonlLoader。
+支持新增数据直接注入（config.yaml split.new_data_sheet 配置）：
+    若 Excel 中存在指定名称的 sheet（默认 "new"），该 sheet 数据不参与 8:1:1 划分，
+    而是全量直接追加到 train 和 val。
 
 用法：
     uv run python scripts/run_split.py --input data/raw/sample.xlsx
@@ -105,11 +106,29 @@ def main() -> None:
     )
     print(f"   随机种子：{cfg.random_seed}\n")
 
-    # Step 1：加载 + 校验
-    loader = ExcelLoader(cfg)
-    df = loader.load(args.input)
+    import pandas as pd  # noqa: PLC0415
 
+    # Step 1：加载（支持新增数据 sheet 分离）
+    loader = ExcelLoader(cfg)
+    new_sheet = cfg.new_data_sheet
+
+    if new_sheet:
+        df, df_new = loader.load_separated(args.input, new_sheet)
+        if len(df_new) > 0:
+            print(f"   常规数据：{len(df)} 条")
+            print(f"   新增数据（sheet='{new_sheet}'）：{len(df_new)} 条 → 直接注入 train+val")
+        else:
+            print(f"   未找到 sheet '{new_sheet}'，所有数据按常规流程处理")
+            print(f"   原始数据：{len(df)} 条")
+            df_new = pd.DataFrame()
+    else:
+        df = loader.load(args.input)
+        df_new = pd.DataFrame()
+        print(f"   原始数据：{len(df)} 条")
+
+    # Step 2：校验
     validator = DataValidator(cfg)
+
     result = validator.validate(df)
     print(result.summary())
     if not result.is_valid:
@@ -117,22 +136,40 @@ def main() -> None:
         sys.exit(1)
     df = result.cleaned_df
 
-    # Step 2：划分
+    df_new_clean = pd.DataFrame()
+    if len(df_new) > 0:
+        new_result = validator.validate(df_new)
+        df_new_clean = new_result.cleaned_df
+        print(f"   新增数据清洗后：{len(df_new_clean)} 条\n")
+
+    # Step 3：划分常规数据
     splitter = DataSplitter(cfg)
     split_result = splitter.split(df)
     print(split_result.summary())
 
-    # Step 3：写出三份文件
+    # 新增数据全量追加到 train 和 val（不进 test）
+    if len(df_new_clean) > 0:
+        train_df = pd.concat([split_result.train, df_new_clean], ignore_index=True)
+        val_df   = pd.concat([split_result.val,   df_new_clean], ignore_index=True)
+        print(
+            f"\n   新增数据已注入：train +{len(df_new_clean)} 条 → {len(train_df)} 条，"
+            f"val +{len(df_new_clean)} 条 → {len(val_df)} 条"
+        )
+    else:
+        train_df = split_result.train
+        val_df   = split_result.val
+
+    # Step 4：写出三份文件
     converter = JsonlConverter(cfg, schema)
-    converter.convert_split(split_result.train, cfg.get_train_path(schema))
-    converter.convert_split(split_result.val,   cfg.get_val_path(schema))
-    converter.convert_split(split_result.test,  cfg.get_test_path(schema))
+    converter.convert_split(train_df,          cfg.get_train_path(schema))
+    converter.convert_split(val_df,            cfg.get_val_path(schema))
+    converter.convert_split(split_result.test, cfg.get_test_path(schema))
 
     ext = schema.file_extension
     ts  = cfg.run_timestamp
     print(f"\n✅ 划分完成，输出目录：{cfg.data_output_dir}")
-    print(f"   train_{ts}{ext} : {len(split_result.train)} 条")
-    print(f"   val_{ts}{ext}   : {len(split_result.val)} 条")
+    print(f"   train_{ts}{ext} : {len(train_df)} 条")
+    print(f"   val_{ts}{ext}   : {len(val_df)} 条")
     print(f"   test_{ts}{ext}  : {len(split_result.test)} 条")
 
 

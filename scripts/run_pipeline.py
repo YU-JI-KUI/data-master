@@ -3,6 +3,11 @@ run_pipeline.py —— 一键执行完整数据处理流水线
 
 流程：Excel → 校验 → 转换（全量 JSONL）→ 划分（train/val/test）→ 分析报告
 
+新增数据直接注入（config.yaml split.new_data_sheet 配置）：
+    若 Excel 中存在指定名称的 sheet（默认 "new"），该 sheet 数据不参与 8:1:1 划分，
+    而是全量直接追加到 train 和 val，确保每条新数据都出现在训练集和验证集中。
+    适用于存量数据量大（如 6 万条）、新增数据少（如 100 条）的场景。
+
 用法：
     uv run python scripts/run_pipeline.py --input data/raw/sample.xlsx
     uv run python scripts/run_pipeline.py --input data/raw/sample.xlsx --no-report
@@ -106,44 +111,80 @@ def main() -> None:
     # ──────────────────────────────────────────
     print("📂 [1/4] 加载 Excel 数据...")
     loader = ExcelLoader(cfg)
-    df_raw = loader.load(args.input)
-    print(f"   原始数据：{len(df_raw)} 条\n")
+
+    new_sheet = cfg.new_data_sheet  # 空字符串表示禁用
+    if new_sheet:
+        df_raw, df_new = loader.load_separated(args.input, new_sheet)
+        if len(df_new) > 0:
+            print(f"   常规数据：{len(df_raw)} 条")
+            print(f"   新增数据（sheet='{new_sheet}'）：{len(df_new)} 条 → 直接注入 train+val\n")
+        else:
+            print(f"   未找到 sheet '{new_sheet}'，所有数据按常规流程处理")
+            print(f"   原始数据：{len(df_raw)} 条\n")
+    else:
+        df_raw = loader.load(args.input)
+        df_new = __import__("pandas").DataFrame()
+        print(f"   原始数据：{len(df_raw)} 条\n")
 
     # ──────────────────────────────────────────
     # Step 2：校验 & 清洗
     # ──────────────────────────────────────────
     print("✅ [2/4] 数据校验与清洗...")
     validator = DataValidator(cfg)
+
+    # 清洗常规数据
     result = validator.validate(df_raw)
     print(result.summary())
-
     if not result.is_valid:
         print("\n❌ 校验失败，流水线中止。请检查原始数据。")
         sys.exit(1)
-
     df_clean = result.cleaned_df
-    print(f"   清洗后：{len(df_clean)} 条\n")
+    print(f"   清洗后：{len(df_clean)} 条")
+
+    # 清洗新增数据（若存在）
+    df_new_clean = __import__("pandas").DataFrame()
+    if len(df_new) > 0:
+        new_result = validator.validate(df_new)
+        df_new_clean = new_result.cleaned_df
+        print(f"   新增数据清洗后：{len(df_new_clean)} 条\n")
+    else:
+        print()
 
     # ──────────────────────────────────────────
-    # Step 3：转换全量 JSONL
+    # Step 3：划分数据集 & 转换
     # ──────────────────────────────────────────
     print("🔄 [3/4] 划分数据集 & 转换 JSONL...")
     splitter = DataSplitter(cfg)
     split_result = splitter.split(df_clean)
     print(split_result.summary())
 
+    # 将新增数据全量追加到 train 和 val（不进 test）
+    import pandas as pd  # noqa: PLC0415
+    if len(df_new_clean) > 0:
+        train_df = pd.concat([split_result.train, df_new_clean], ignore_index=True)
+        val_df   = pd.concat([split_result.val,   df_new_clean], ignore_index=True)
+        print(
+            f"\n   新增数据已注入：train +{len(df_new_clean)} 条 → {len(train_df)} 条，"
+            f"val +{len(df_new_clean)} 条 → {len(val_df)} 条"
+        )
+    else:
+        train_df = split_result.train
+        val_df   = split_result.val
+
+    # 全量数据 = 常规数据 + 新增数据（用于全量文件和分析）
+    df_all = pd.concat([df_clean, df_new_clean], ignore_index=True) if len(df_new_clean) > 0 else df_clean
+
     converter = JsonlConverter(cfg, schema)
-    # 同时写入全量文件和三个子集文件
-    converter.convert(df_clean)
-    converter.convert_split(split_result.train, cfg.get_train_path(schema))
-    converter.convert_split(split_result.val,   cfg.get_val_path(schema))
-    converter.convert_split(split_result.test,  cfg.get_test_path(schema))
+    converter.convert(df_all)
+    converter.convert_split(train_df,         cfg.get_train_path(schema))
+    converter.convert_split(val_df,           cfg.get_val_path(schema))
+    converter.convert_split(split_result.test, cfg.get_test_path(schema))
 
     ext = schema.file_extension
     ts  = cfg.run_timestamp
     print(f"\n   输出目录：{cfg.data_output_dir}")
-    print(f"   ├── train_{ts}{ext}  ({len(split_result.train)} 条)")
-    print(f"   ├── val_{ts}{ext}    ({len(split_result.val)} 条)")
+    print(f"   ├── train_{ts}{ext}  ({len(train_df)} 条)")
+    print(f"   ├── val_{ts}{ext}    ({len(val_df)} 条)")
     print(f"   └── test_{ts}{ext}   ({len(split_result.test)} 条)\n")
 
     # ──────────────────────────────────────────
@@ -153,13 +194,13 @@ def main() -> None:
         print("📊 [4/4] 生成分析报告...")
         analyzer = DataAnalyzer(cfg)
 
-        # 全量报告
-        full_report = analyzer.analyze(df_clean, "全量数据")
+        # 全量报告（含新增数据）
+        full_report = analyzer.analyze(df_all, "全量数据")
         analyzer.print_report(full_report)
 
-        # 各子集报告
+        # 各子集报告（train/val 已含新增数据）
         split_reports = analyzer.analyze_splits(
-            split_result.train, split_result.val, split_result.test
+            train_df, val_df, split_result.test
         )
         report_path = analyzer.save_report([full_report] + split_reports)
         print(f"\n   报告已写入：{report_path}")
